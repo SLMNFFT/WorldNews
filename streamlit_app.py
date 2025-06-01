@@ -43,30 +43,35 @@ def get_country_centroid(country_name):
             geom = shape(feature['geometry'])
             centroid = geom.centroid
             return [centroid.y, centroid.x]
-    return [20, 0]  # Fallback center
+    return [20, 0]  # fallback
 
 # ==== Session State ====
+available_countries = sorted(news_df['country'].dropna().unique())
+
 if 'selected_country' not in st.session_state:
     st.session_state.selected_country = "germany"
 
+if 'country_select' not in st.session_state:
+    st.session_state.country_select = st.session_state.selected_country
+
 # ==== Layout ====
 st.markdown("<h1 style='margin-bottom: 10px;'>🌍 PRESSEBOT - News Cockpit </h1>", unsafe_allow_html=True)
-
 col1, col2, col3 = st.columns([3, 0.2, 2], gap="medium")
 
 with col1:
-    available_countries = sorted(news_df['country'].dropna().unique())
-
+    # === Country Dropdown (syncs with session state) ===
     selected_country_dropdown = st.selectbox(
         "Select a country",
         available_countries,
-        index=available_countries.index(st.session_state.selected_country) if st.session_state.selected_country in available_countries else 0,
+        index=available_countries.index(st.session_state.country_select),
         key="country_select"
     )
 
     if selected_country_dropdown != st.session_state.selected_country:
         st.session_state.selected_country = selected_country_dropdown
+        st.session_state.country_select = selected_country_dropdown
 
+    # === Map Display ===
     center_coords = get_country_centroid(st.session_state.selected_country)
     m = folium.Map(location=center_coords, zoom_start=4)
 
@@ -86,14 +91,17 @@ with col1:
 
     map_data = st_folium(m, width=700, height=450)
 
+    # === Map click updates dropdown ===
     if map_data and map_data.get("last_clicked"):
         point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
         for feature in geojson['features']:
             if shape(feature['geometry']).contains(point):
                 clicked_country = normalize_country(feature['properties']['name'])
-                if clicked_country != st.session_state.selected_country:
+                if clicked_country in available_countries and clicked_country != st.session_state.selected_country:
                     st.session_state.selected_country = clicked_country
+                    st.session_state.country_select = clicked_country  # sync dropdown
 
+    # === News Statistics ===
     st.markdown("### 📊 News Statistics")
     media_df = news_df[news_df['country'] == st.session_state.selected_country]
     last_hour = datetime.utcnow() - timedelta(hours=1)
@@ -165,7 +173,7 @@ with col3:
     st.markdown("---")
     st.markdown("### 🔊 Audio Setup")
 
-    # Languages supported by gTTS (partial list)
+    # gTTS Supported Languages
     languages = {
         'English (US)': 'en',
         'English (UK)': 'en-uk',
@@ -182,10 +190,6 @@ with col3:
 
     selected_lang_name = st.selectbox("Select Language", list(languages.keys()), index=0)
     selected_lang_code = languages[selected_lang_name]
-
-    # Speaker accents / variants (simulate different voices by accents/languages)
-    # gTTS doesn't have multiple speakers, so just language/accent options.
-
     speech_speed = st.radio("Speech Speed", options=["Normal", "Slow"], index=0)
 
     if all_texts:
