@@ -32,6 +32,17 @@ def normalize_country(name):
 
 feed_counts = news_df.groupby('country').size().to_dict()
 
+def get_country_centroid(country_name):
+    country_name = normalize_country(country_name)
+    for feature in geojson['features']:
+        name = normalize_country(feature['properties']['name'])
+        if name == country_name:
+            geom = shape(feature['geometry'])
+            centroid = geom.centroid
+            return [centroid.y, centroid.x]
+    # Default fallback
+    return [20, 0]
+
 # ==== Session State ====
 if 'selected_country' not in st.session_state:
     st.session_state.selected_country = "germany"
@@ -43,7 +54,7 @@ st.markdown("<h1 style='margin-bottom: 10px;'>🌍 News Feed Map</h1>", unsafe_a
 col1, col2, col3 = st.columns([3, 0.2, 2], gap="medium")
 
 with col1:
-    # Dropdown
+    # Dropdown for country selection
     available_countries = sorted(news_df['country'].dropna().unique())
     selected_country = st.selectbox(
         "Select a country",
@@ -53,8 +64,9 @@ with col1:
     if selected_country != st.session_state.selected_country:
         st.session_state.selected_country = selected_country
 
-    # Map
-    m = folium.Map(location=[20, 0], zoom_start=2)
+    # Center map on selected country's centroid
+    center_coords = get_country_centroid(st.session_state.selected_country)
+    m = folium.Map(location=center_coords, zoom_start=4)
 
     def style_function(feature):
         country = normalize_country(feature['properties']['name'])
@@ -160,4 +172,3 @@ with col3:
     st.markdown("### 🔊 Global Controls")
     full_text = " ".join(all_texts).replace("`", "'")
     # You can add your JS TTS controls here if you want, similar to previous
-
