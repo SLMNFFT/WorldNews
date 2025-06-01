@@ -95,7 +95,7 @@ with col1:
                     st.session_state.selected_country = clicked_country
                     # Do not assign to st.session_state.country_select — it’s widget-bound
 
-    st.markdown(" 📊 News Statistics")
+    st.markdown("<h4 style='margin-top: 0;'>📊 News Statistics</h4>", unsafe_allow_html=True)
     media_df = news_df[news_df['country'] == st.session_state.selected_country]
     last_hour = datetime.utcnow() - timedelta(hours=1)
     today = datetime.utcnow().date()
