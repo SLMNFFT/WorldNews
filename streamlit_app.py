@@ -48,7 +48,7 @@ if 'selected_country' not in st.session_state:
     st.session_state.selected_country = "germany"
 
 # ==== Layout ====
-st.markdown("<h1 style='margin-bottom: 10px;'>🌍 PRESSEBOT - News Coc<pit </h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='margin-bottom: 10px;'>🌍 PRESSEBOT - News Cockpit </h1>", unsafe_allow_html=True)
 
 # Create 3 main columns: left, middle (empty), right (news feed)
 col1, col2, col3 = st.columns([3, 0.2, 2], gap="medium")
