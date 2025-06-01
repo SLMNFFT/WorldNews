@@ -98,7 +98,6 @@ with col1:
 
     # ---- News Statistics Grid BELOW Map ----
     st.markdown("### 📊 News Statistics")
-
     media_df = news_df[news_df['country'] == st.session_state.selected_country]
     last_hour = datetime.utcnow() - timedelta(hours=1)
     today = datetime.utcnow().date()
