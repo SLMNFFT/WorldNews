@@ -94,7 +94,8 @@ with col1:
                 clicked_country = normalize_country(feature['properties']['name'])
                 if clicked_country != st.session_state.selected_country:
                     st.session_state.selected_country = clicked_country
-                    st.experimental_rerun()
+
+
 
     # ---- News Statistics Grid BELOW Map ----
     st.markdown("### 📊 News Statistics")
