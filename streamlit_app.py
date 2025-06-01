@@ -12,6 +12,38 @@ from urllib.parse import urlparse
 # ==== Page Setup ====
 st.set_page_config(page_title="NewsMap", layout="wide", page_icon="🎧")
 
+# ==== CSS to reduce margins/paddings ====
+st.markdown("""
+<style>
+/* Reduce margin bottom for h1 and h3 headings */
+h1 {
+    margin-top: 10px !important;
+    margin-bottom: 5px !important;
+}
+h3 {
+    margin-top: 8px !important;
+    margin-bottom: 4px !important;
+}
+
+/* Reduce margin bottom for paragraphs */
+p {
+    margin-bottom: 4px !important;
+}
+
+/* Reduce vertical spacing around Streamlit columns content */
+.css-1d391kg {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+/* Remove extra padding inside Streamlit containers */
+.element-container {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ==== Load Data ====
 @st.cache_data
 def load_data():
@@ -48,7 +80,7 @@ if 'selected_country' not in st.session_state:
     st.session_state.selected_country = "germany"
 
 # ==== Layout ====
-st.markdown("<h1 style='margin-bottom: 10px;'>🌍 News Feed Map</h1>", unsafe_allow_html=True)
+st.markdown("<h1>🌍 News Feed Map</h1>", unsafe_allow_html=True)
 
 # Create 3 main columns: left, middle (empty), right (news feed)
 col1, col2, col3 = st.columns([3, 0.2, 2], gap="medium")
@@ -92,7 +124,7 @@ with col1:
                 break
 
     # ---- News Statistics Grid BELOW Map ----
-    st.markdown("### 📊 News Statistics")
+    st.markdown("<h3>📊 News Statistics</h3>", unsafe_allow_html=True)
 
     media_df = news_df[news_df['country'] == st.session_state.selected_country]
     last_hour = datetime.utcnow() - timedelta(hours=1)
@@ -143,7 +175,7 @@ with col2:
 # Right column: News feed list + TTS controls
 with col3:
     st.markdown("---")
-    st.markdown("### 📰 News Feed")
+    st.markdown("<h3>📰 News Feed</h3>", unsafe_allow_html=True)
 
     selected_media = st.selectbox("Choose Media Outlet", ["All"] + sorted(media_df['media_name'].dropna().unique()))
     feed_rows = media_df[media_df['media_name'] == selected_media] if selected_media != "All" else media_df
