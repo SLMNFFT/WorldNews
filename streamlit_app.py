@@ -82,14 +82,6 @@ with map_col:
             if shape(feature['geometry']).contains(point):
                 st.session_state.selected_country = normalize_country(feature['properties']['name'])
                 break
-
-# ==== Column 2: Stats + News ====
-media_df = news_df[news_df['country'] == st.session_state.selected_country]
-last_hour = datetime.utcnow() - timedelta(hours=1)
-today = datetime.utcnow().date()
-news_hour, news_today, source_counts = 0, 0, {}
-
-with news_col:
     # --- News Statistics ---
     st.markdown("### 📊 News Statistics")
     for _, row in media_df.iterrows():
@@ -108,6 +100,16 @@ with news_col:
     st.markdown("**🗞 Per Source:**")
     for source, count in sorted(source_counts.items(), key=lambda x: -x[1]):
         st.markdown(f"- **{source}**: {count} today")
+
+
+# ==== Column 2: Stats + News ====
+media_df = news_df[news_df['country'] == st.session_state.selected_country]
+last_hour = datetime.utcnow() - timedelta(hours=1)
+today = datetime.utcnow().date()
+news_hour, news_today, source_counts = 0, 0, {}
+
+with news_col:
+
 
     # --- News Feed ---
     st.markdown("---")
