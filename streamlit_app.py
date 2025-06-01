@@ -45,7 +45,7 @@ def get_country_centroid(country_name):
             return [centroid.y, centroid.x]
     return [20, 0]  # fallback
 
-# ==== Session State ====
+# ==== Session State Initialization ====
 available_countries = sorted(news_df['country'].dropna().unique())
 
 if 'selected_country' not in st.session_state:
@@ -54,12 +54,18 @@ if 'selected_country' not in st.session_state:
 if 'country_select' not in st.session_state:
     st.session_state.country_select = st.session_state.selected_country
 
+# ==== Handle map click rerun logic ====
+if 'clicked_country' in st.session_state:
+    st.session_state.selected_country = st.session_state.clicked_country
+    st.session_state.country_select = st.session_state.clicked_country
+    del st.session_state.clicked_country  # clear temp flag
+
 # ==== Layout ====
 st.markdown("<h1 style='margin-bottom: 10px;'>🌍 PRESSEBOT - News Cockpit</h1>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns([3, 0.01, 2], gap="medium")
 
 with col1:
-    # === Country Dropdown (syncs with session state) ===
+    # === Country Dropdown ===
     selected_country_dropdown = st.selectbox(
         "Select a country",
         available_countries,
@@ -71,7 +77,7 @@ with col1:
         st.session_state.selected_country = selected_country_dropdown
         st.session_state.country_select = selected_country_dropdown
 
-    # === Map Display ===
+    # === Map ===
     center_coords = get_country_centroid(st.session_state.selected_country)
     m = folium.Map(location=center_coords, zoom_start=4)
 
@@ -91,16 +97,15 @@ with col1:
 
     map_data = st_folium(m, width=700, height=450)
 
-    # === Map click updates dropdown ===
+    # === Handle map clicks ===
     if map_data and map_data.get("last_clicked"):
         point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
         for feature in geojson['features']:
             if shape(feature['geometry']).contains(point):
                 clicked_country = normalize_country(feature['properties']['name'])
                 if clicked_country in available_countries and clicked_country != st.session_state.selected_country:
-                    st.session_state.selected_country = clicked_country
-                    st.session_state.country_select = clicked_country
-                    st.experimental_rerun()  # force UI refresh
+                    st.session_state.clicked_country = clicked_country
+                    st.rerun()
 
     # === News Statistics ===
     st.markdown("### 📊 News Statistics")
@@ -174,7 +179,6 @@ with col3:
     st.markdown("---")
     st.markdown("### 🔊 Audio Setup")
 
-    # gTTS Supported Languages
     languages = {
         'English (US)': 'en',
         'English (UK)': 'en-uk',
