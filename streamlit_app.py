@@ -8,13 +8,10 @@ from shapely.geometry import shape, Point
 from datetime import datetime, timedelta
 import time
 
-st.set_page_config(
-    page_title="NewsMap",
-    layout="wide",
-    page_icon="🎧",
-)
+# ==== Page Setup ====
+st.set_page_config(page_title="NewsMap", layout="wide", page_icon="🎧")
 
-# === Load and Normalize Data ===
+# ==== Load Data Functions ====
 @st.cache_data
 def load_data():
     df = pd.read_csv("cleaned_news_feeds.csv")
@@ -32,256 +29,151 @@ geojson = load_geojson()
 def normalize_country(name):
     return name.strip().lower()
 
-# Prepare feed counts by country
 feed_counts = news_df.groupby('country').size().to_dict()
 
-# Initialize session state
+# ==== Session State Init ====
 if 'selected_country' not in st.session_state:
     st.session_state.selected_country = None
 
-# === Build Folium Map ===
+# ==== Build the Map ====
 m = folium.Map(location=[20, 0], zoom_start=2)
 
 def style_function(feature):
-    country_name = normalize_country(feature['properties']['name'])
-    fill_color = "#ff0000" if country_name == st.session_state.selected_country else "#6495ED"
-    opacity = 0.7 if feed_counts.get(country_name, 0) > 0 else 0.1
-    return {
-        'fillColor': fill_color,
-        'color': 'black',
-        'weight': 1,
-        'fillOpacity': opacity,
-    }
-
-def highlight_function(feature):
-    return {'weight': 3, 'color': 'yellow'}
+    country = normalize_country(feature['properties']['name'])
+    fill_color = "#ff0000" if country == st.session_state.selected_country else "#6495ED"
+    opacity = 0.7 if feed_counts.get(country, 0) > 0 else 0.1
+    return {'fillColor': fill_color, 'color': 'black', 'weight': 1, 'fillOpacity': opacity}
 
 folium.GeoJson(
     geojson,
     name="Countries",
     style_function=style_function,
-    highlight_function=highlight_function,
+    highlight_function=lambda f: {'weight': 3, 'color': 'yellow'},
     tooltip=folium.GeoJsonTooltip(fields=["name"], aliases=["Country:"])
 ).add_to(m)
 
-# === Layout ===
+# ==== Layout: Title and Map ====
 st.markdown("<h1 style='margin-bottom: 10px;'>🌍 News Feed Map</h1>", unsafe_allow_html=True)
+map_col, news_col = st.columns([2, 1.2], gap="medium")
 
-# Map spanning columns 1 and 2 on top
+with map_col:
+    st_folium(m, width=1300, height=450)
+
+# ==== Map Click Logic ====
+map_data = st.session_state.get("map_data")
+if map_data and map_data.get("last_clicked"):
+    point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
+    for feature in geojson['features']:
+        if shape(feature['geometry']).contains(point):
+            st.session_state.selected_country = normalize_country(feature['properties']['name'])
+            break
+
+# ==== Controls: Select Country and TTS Sidebar ====
+with st.sidebar:
+    st.header("🔊 Voice Controls")
+    language = st.selectbox("TTS Language", ["en-US", "en-GB", "de-DE", "fr-FR", "es-ES", "it-IT", "ja-JP", "zh-CN"], index=2)
+    volume = st.slider("Volume", 0.0, 1.0, 1.0, 0.1)
+    rate = st.slider("Speed", 0.1, 2.0, 1.0, 0.1)
+
 col1, col2, col3 = st.columns([1, 1, 1.2], gap="medium")
 
-with st.container():
-    # Map across col1 and col2 combined
-    map_col = st.columns([2, 1.2])[0]  # Use first column of a 2-col layout to hold map
-
-    with map_col:
-        st.markdown("### Map")
-        map_data = st_folium(m, width=1300, height=450)  # 650 * 2 width roughly
-
-# Below the map, new row with country select and News Statistics side by side under col1 and col2
-col_select, col_stats, col_newsfeed = st.columns([1, 1, 1.2], gap="medium")
-
-with col_select:
-    # Country selector
+# ==== Country Selector ====
+with col1:
     available_countries = sorted(news_df['country'].dropna().unique())
-    selected_country = st.selectbox(
-        "Select a country (or click on the map)",
-        available_countries,
-        index=available_countries.index(st.session_state.selected_country)
-        if st.session_state.selected_country in available_countries else 0,
-        key="selected_country_manual"
-    )
+    selected_country = st.selectbox("Select a country", available_countries, index=available_countries.index(st.session_state.selected_country) if st.session_state.selected_country in available_countries else 0)
     if selected_country != st.session_state.selected_country:
         st.session_state.selected_country = selected_country
 
-with col_stats:
-    # News Statistics
+# ==== News Stats ====
+with col2:
     st.markdown("### 📊 News Statistics")
-    country_media = news_df[news_df['country'] == st.session_state.selected_country]
-
+    media_df = news_df[news_df['country'] == st.session_state.selected_country]
     last_hour = datetime.utcnow() - timedelta(hours=1)
     today = datetime.utcnow().date()
+    news_hour, news_today, source_counts = 0, 0, {}
 
-    news_last_hour = 0
-    news_today = 0
-    source_counts = {}
-
-    for _, row in country_media.iterrows():
+    for _, row in media_df.iterrows():
         try:
             feed = feedparser.parse(row['newsfeed_url'])
-            count_hour = 0
-            count_day = 0
-
-            for entry in feed.entries:
-                if hasattr(entry, 'published_parsed'):
-                    pub_time = datetime.fromtimestamp(time.mktime(entry.published_parsed))
-                    if pub_time > last_hour:
-                        count_hour += 1
-                    if pub_time.date() == today:
-                        count_day += 1
-
-            news_last_hour += count_hour
-            news_today += count_day
-            source_counts[row['media_name']] = count_day
-        except Exception:
+            hour_count = sum(1 for entry in feed.entries if hasattr(entry, 'published_parsed') and datetime.fromtimestamp(time.mktime(entry.published_parsed)) > last_hour)
+            today_count = sum(1 for entry in feed.entries if hasattr(entry, 'published_parsed') and datetime.fromtimestamp(time.mktime(entry.published_parsed)).date() == today)
+            news_hour += hour_count
+            news_today += today_count
+            source_counts[row['media_name']] = today_count
+        except:
             pass
 
-    st.metric("🕐 News in Last Hour", news_last_hour)
-    st.metric("📅 News Today", news_today)
-
-    st.markdown("**🗞 News Per Source:**")
+    st.metric("🕐 Last Hour", news_hour)
+    st.metric("📅 Today", news_today)
+    st.markdown("**🗞 Per Source:**")
     for source, count in sorted(source_counts.items(), key=lambda x: -x[1]):
-        st.markdown(f"- **{source}**: {count} article(s) today")
+        st.markdown(f"- **{source}**: {count} today")
 
-with col_newsfeed:
-    # News Feed (unchanged)
+# ==== News Feed Display ====
+with col3:
     st.markdown("### News Feed")
-    feed_container = st.container()
+    selected_media = st.selectbox("Choose Media Outlet", ["All"] + sorted(media_df['media_name'].dropna().unique()))
+    if selected_media != "All":
+        feed_rows = media_df[media_df['media_name'] == selected_media]
+    else:
+        feed_rows = media_df
 
-# === Map click handling (AFTER rendering the map!) ===
-if map_data and map_data.get("last_clicked"):
-    point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
-    selected = None
-    for feature in geojson['features']:
-        geom = shape(feature['geometry'])
-        if geom.contains(point):
-            selected = normalize_country(feature['properties']['name'])
-            break
-    if selected:
-        st.session_state.selected_country = selected
+    all_texts = []
+    for _, row in feed_rows.iterrows():
+        try:
+            feed = feedparser.parse(row['newsfeed_url'])
+            if feed.entries:
+                st.subheader(f"📰 {row['media_name']}")
+                st.caption(f"URL: {row['newsfeed_url']}")
+                text_block = " ".join(entry.title.replace("`", "'").replace("\n", " ") for entry in feed.entries[:5])
+                all_texts.append(f"{row['media_name']}: {text_block}")
 
-# === Language and voice controls in sidebar ===
-with st.sidebar:
-    st.header("🔊 Voice Controls")
-    language = st.selectbox("Select TTS Language", options=[
-        "en-US", "en-GB", "de-DE", "fr-FR", "es-ES", "it-IT", "ja-JP", "zh-CN"
-    ], index=2)  # default "de-DE"
+                for entry in feed.entries[:5]:
+                    st.markdown(f"- [{entry.title}]({entry.link})")
 
-    volume = st.slider("Volume", min_value=0.0, max_value=1.0, value=1.0, step=0.1)
-    rate = st.slider("Speed", min_value=0.1, max_value=2.0, value=1.0, step=0.1)
+                btn_id = f"read_btn_{row['media_name'].replace(' ', '_')}"
+                st.markdown(f'<button id="{btn_id}">🔊 Read Aloud</button>', unsafe_allow_html=True)
+                st.components.v1.html(f"""
+                    <script>
+                        const btn = document.getElementById('{btn_id}');
+                        btn.onclick = () => {{
+                            const u = new SpeechSynthesisUtterance(`{text_block}`);
+                            u.lang = '{language}';
+                            u.volume = {volume};
+                            u.rate = {rate};
+                            window.speechSynthesis.cancel();
+                            window.speechSynthesis.speak(u);
+                        }};
+                    </script>
+                """, height=0)
+        except Exception as e:
+            st.error(f"Error parsing feed: {e}")
 
+    # ==== Global TTS Controls ====
+    full_text = " ".join(all_texts).replace("`", "'")
+    st.markdown("---")
+    st.markdown("### 🔊 Global Controls")
     st.markdown("""
-        <small>Use the controls below when you play the news reading.</small>
+        <button id="global_play">▶️ Play</button>
+        <button id="global_pause">⏸ Pause</button>
+        <button id="global_resume">▶ Resume</button>
+        <button id="global_stop">⏹ Stop</button>
     """, unsafe_allow_html=True)
 
-# === News Feed Rendering with voice buttons ===
-with feed_container:
-    country_media = news_df[news_df['country'] == st.session_state.selected_country]
-    selected_media = st.selectbox(
-        "Select a Media Outlet", ["All"] + sorted(country_media['media_name'].dropna().unique())
-    )
-
-    if selected_media != "All":
-        feed_rows = country_media[country_media['media_name'] == selected_media]
-    else:
-        feed_rows = country_media
-
-    if feed_rows.empty:
-        st.warning("No feeds found for the selected country or media.")
-    else:
-        # Collect all texts for global reading
-        all_texts = []
-
-        for _, row in feed_rows.iterrows():
-            try:
-                feed = feedparser.parse(row['newsfeed_url'])
-                if feed.entries:
-                    st.subheader(f"📰 {row['media_name']}")
-                    st.caption(f"URL: {row['newsfeed_url']}")
-
-                    text_to_read = ""
-                    for entry in feed.entries[:5]:
-                        title = entry.title.replace("`", "'").replace("\n", " ").strip()
-                        text_to_read += f"{title}. "
-                        all_texts.append(f"{row['media_name']}: {title}.")
-
-                    # Unique button id for JS
-                    btn_id = f"read_btn_{row['media_name'].replace(' ', '_')}"
-
-                    # Show headlines
-                    for entry in feed.entries[:5]:
-                        st.markdown(f"- [{entry.title}]({entry.link})")
-
-                    # JavaScript for per-media TTS read aloud + controls support
-                    js_code = f"""
-                    <script>
-                    const btn = document.getElementById('{btn_id}');
-                    btn.onclick = () => {{
-                        if(window.synth && window.synth.speaking) {{
-                            window.synth.cancel();
-                        }}
-                        window.synth = window.speechSynthesis;
-                        const utterance = new SpeechSynthesisUtterance(`{text_to_read}`);
-                        utterance.lang = '{language}';
-                        utterance.volume = {volume};
-                        utterance.rate = {rate};
-                        window.synth.speak(utterance);
-                    }};
-                    </script>
-                    """
-
-                    st.markdown(f'<button id="{btn_id}">🔊 Read Aloud</button>', unsafe_allow_html=True)
-                    st.components.v1.html(js_code, height=0)
-
-            except Exception as e:
-                st.error(f"Error parsing feed: {e}")
-
-        # --- Global Read Aloud Controls ---
-
-        # Combine all texts for global reading
-        all_texts_combined = " ".join(all_texts).replace("`", "'").replace("\n", " ")
-
-        # IDs for global controls buttons
-        play_id = "global_read_play"
-        pause_id = "global_read_pause"
-        resume_id = "global_read_resume"
-        cancel_id = "global_read_cancel"
-
-        st.markdown("---")
-        st.markdown("### 🔊 Global Voice Controls")
-
-        col_play, col_pause, col_resume, col_cancel = st.columns(4)
-        with col_play:
-            st.markdown(f'<button id="{play_id}">▶️ Play All News</button>', unsafe_allow_html=True)
-        with col_pause:
-            st.markdown(f'<button id="{pause_id}">⏸ Pause</button>', unsafe_allow_html=True)
-        with col_resume:
-            st.markdown(f'<button id="{resume_id}">▶ Resume</button>', unsafe_allow_html=True)
-        with col_cancel:
-            st.markdown(f'<button id="{cancel_id}">⏹ Stop</button>', unsafe_allow_html=True)
-
-        # JS for global controls
-        global_js = f"""
+    st.components.v1.html(f"""
         <script>
-        if (!window.synth) {{
-            window.synth = window.speechSynthesis;
-        }}
-        const utteranceGlobal = new SpeechSynthesisUtterance(`{all_texts_combined}`);
-        utteranceGlobal.lang = '{language}';
-        utteranceGlobal.volume = {volume};
-        utteranceGlobal.rate = {rate};
+            const globalUtter = new SpeechSynthesisUtterance(`{full_text}`);
+            globalUtter.lang = '{language}';
+            globalUtter.volume = {volume};
+            globalUtter.rate = {rate};
+            let synth = window.speechSynthesis;
 
-        document.getElementById('{play_id}').onclick = () => {{
-            if(window.synth.speaking) {{
-                window.synth.cancel();
-            }}
-            window.synth.speak(utteranceGlobal);
-        }};
-        document.getElementById('{pause_id}').onclick = () => {{
-            if(window.synth.speaking && !window.synth.paused) {{
-                window.synth.pause();
-            }}
-        }};
-        document.getElementById('{resume_id}').onclick = () => {{
-            if(window.synth.paused) {{
-                window.synth.resume();
-            }}
-        }};
-        document.getElementById('{cancel_id}').onclick = () => {{
-            if(window.synth.speaking) {{
-                window.synth.cancel();
-            }}
-        }};
+            document.getElementById("global_play").onclick = () => {{
+                synth.cancel();
+                synth.speak(globalUtter);
+            }};
+            document.getElementById("global_pause").onclick = () => synth.pause();
+            document.getElementById("global_resume").onclick = () => synth.resume();
+            document.getElementById("global_stop").onclick = () => synth.cancel();
         </script>
-        """
-        st.components.v1.html(global_js, height=0)
+    """, height=0)
