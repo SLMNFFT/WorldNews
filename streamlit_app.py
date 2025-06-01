@@ -5,6 +5,8 @@ import requests
 import folium
 from streamlit_folium import st_folium
 from shapely.geometry import shape, Point
+from datetime import datetime, timedelta
+import time
 
 # === Load and Normalize Data ===
 @st.cache_data
@@ -60,10 +62,12 @@ folium.GeoJson(
 st.markdown("<h1 style='margin-bottom: 10px;'>🌍 News Feed Map</h1>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns([1, 1, 1.2], gap="medium")
 
+# === Map Column ===
 with col1:
     st.markdown("### Map")
     map_data = st_folium(m, width=650, height=450)
 
+# === Filters + Stats Column ===
 with col2:
     st.markdown("### Filters")
     available_countries = sorted(news_df['country'].dropna().unique())
@@ -78,8 +82,49 @@ with col2:
     if selected_country != st.session_state.selected_country:
         st.session_state.selected_country = selected_country
 
+    # === News Stats ===
+    st.markdown("### 📊 News Statistics")
+    country_media = news_df[news_df['country'] == st.session_state.selected_country]
+
+    last_hour = datetime.utcnow() - timedelta(hours=1)
+    today = datetime.utcnow().date()
+
+    news_last_hour = 0
+    news_today = 0
+    source_counts = {}
+
+    for _, row in country_media.iterrows():
+        try:
+            feed = feedparser.parse(row['newsfeed_url'])
+            count_hour = 0
+            count_day = 0
+
+            for entry in feed.entries:
+                if hasattr(entry, 'published_parsed'):
+                    pub_time = datetime.fromtimestamp(time.mktime(entry.published_parsed))
+                    if pub_time > last_hour:
+                        count_hour += 1
+                    if pub_time.date() == today:
+                        count_day += 1
+
+            news_last_hour += count_hour
+            news_today += count_day
+            source_counts[row['media_name']] = count_day
+        except Exception:
+            pass
+
+    st.metric("🕐 News in Last Hour", news_last_hour)
+    st.metric("📅 News Today", news_today)
+
+    st.markdown("**🗞 News Per Source:**")
+    for source, count in sorted(source_counts.items(), key=lambda x: -x[1]):
+        st.markdown(f"- **{source}**: {count} article(s) today")
+
+# === News Feed Column ===
 with col3:
     st.markdown("### News Feed")
+    st.markdown("<div style='margin-top: -15px'></div>", unsafe_allow_html=True)
+
     feed_container = st.container()
 
 # === Map click handling (AFTER rendering the map!) ===
