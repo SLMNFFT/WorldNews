@@ -8,12 +8,12 @@ from shapely.geometry import shape, Point
 from datetime import datetime, timedelta
 import time
 
-
 st.set_page_config(
     page_title="NewsMap",
     layout="wide",
     page_icon="🎧",
 )
+
 # === Load and Normalize Data ===
 @st.cache_data
 def load_data():
@@ -145,7 +145,21 @@ if map_data and map_data.get("last_clicked"):
     if selected:
         st.session_state.selected_country = selected
 
-# === News Feed Rendering ===
+# === Language and voice controls in sidebar ===
+with st.sidebar:
+    st.header("🔊 Voice Controls")
+    language = st.selectbox("Select TTS Language", options=[
+        "en-US", "en-GB", "de-DE", "fr-FR", "es-ES", "it-IT", "ja-JP", "zh-CN"
+    ], index=2)  # default "de-DE"
+
+    volume = st.slider("Volume", min_value=0.0, max_value=1.0, value=1.0, step=0.1)
+    rate = st.slider("Speed", min_value=0.1, max_value=2.0, value=1.0, step=0.1)
+
+    st.markdown("""
+        <small>Use the controls below when you play the news reading.</small>
+    """, unsafe_allow_html=True)
+
+# === News Feed Rendering with voice buttons ===
 with feed_container:
     country_media = news_df[news_df['country'] == st.session_state.selected_country]
     selected_media = st.selectbox(
@@ -160,13 +174,110 @@ with feed_container:
     if feed_rows.empty:
         st.warning("No feeds found for the selected country or media.")
     else:
+        # Collect all texts for global reading
+        all_texts = []
+
         for _, row in feed_rows.iterrows():
             try:
                 feed = feedparser.parse(row['newsfeed_url'])
                 if feed.entries:
                     st.subheader(f"📰 {row['media_name']}")
                     st.caption(f"URL: {row['newsfeed_url']}")
+
+                    text_to_read = ""
+                    for entry in feed.entries[:5]:
+                        title = entry.title.replace("`", "'").replace("\n", " ").strip()
+                        text_to_read += f"{title}. "
+                        all_texts.append(f"{row['media_name']}: {title}.")
+
+                    # Unique button id for JS
+                    btn_id = f"read_btn_{row['media_name'].replace(' ', '_')}"
+
+                    # Show headlines
                     for entry in feed.entries[:5]:
                         st.markdown(f"- [{entry.title}]({entry.link})")
+
+                    # JavaScript for per-media TTS read aloud + controls support
+                    js_code = f"""
+                    <script>
+                    const btn = document.getElementById('{btn_id}');
+                    btn.onclick = () => {{
+                        if(window.synth) {{
+                            window.synth.cancel();
+                        }} else {{
+                            window.synth = window.speechSynthesis;
+                        }}
+                        const utterance = new SpeechSynthesisUtterance(`{text_to_read}`);
+                        utterance.lang = '{language}';
+                        utterance.volume = {volume};
+                        utterance.rate = {rate};
+                        window.synth.speak(utterance);
+                    }};
+                    </script>
+                    """
+
+                    st.markdown(f'<button id="{btn_id}">🔊 Read Aloud</button>', unsafe_allow_html=True)
+                    st.components.v1.html(js_code, height=0)
+
             except Exception as e:
                 st.error(f"Error parsing feed: {e}")
+
+        # --- Global Read Aloud Controls ---
+
+        # Combine all texts for global reading
+        all_texts_combined = " ".join(all_texts).replace("`", "'").replace("\n", " ")
+
+        # IDs for global controls buttons
+        play_id = "global_read_play"
+        pause_id = "global_read_pause"
+        resume_id = "global_read_resume"
+        cancel_id = "global_read_cancel"
+
+        st.markdown("---")
+        st.markdown("### 🔊 Global Voice Controls")
+
+        col_play, col_pause, col_resume, col_cancel = st.columns(4)
+        with col_play:
+            st.markdown(f'<button id="{play_id}">▶️ Play All News</button>', unsafe_allow_html=True)
+        with col_pause:
+            st.markdown(f'<button id="{pause_id}">⏸ Pause</button>', unsafe_allow_html=True)
+        with col_resume:
+            st.markdown(f'<button id="{resume_id}">▶ Resume</button>', unsafe_allow_html=True)
+        with col_cancel:
+            st.markdown(f'<button id="{cancel_id}">⏹ Stop</button>', unsafe_allow_html=True)
+
+        # JS for global controls
+        global_js = f"""
+        <script>
+        if (!window.synth) {{
+            window.synth = window.speechSynthesis;
+        }}
+        const utteranceGlobal = new SpeechSynthesisUtterance(`{all_texts_combined}`);
+        utteranceGlobal.lang = '{language}';
+        utteranceGlobal.volume = {volume};
+        utteranceGlobal.rate = {rate};
+
+        document.getElementById('{play_id}').onclick = () => {{
+            if(window.synth.speaking) {{
+                window.synth.cancel();
+            }}
+            window.synth.speak(utteranceGlobal);
+        }};
+        document.getElementById('{pause_id}').onclick = () => {{
+            if(window.synth.speaking && !window.synth.paused) {{
+                window.synth.pause();
+            }}
+        }};
+        document.getElementById('{resume_id}').onclick = () => {{
+            if(window.synth.paused) {{
+                window.synth.resume();
+            }}
+        }};
+        document.getElementById('{cancel_id}').onclick = () => {{
+            if(window.synth.speaking) {{
+                window.synth.cancel();
+            }}
+        }};
+        </script>
+        """
+        st.components.v1.html(global_js, height=0)
