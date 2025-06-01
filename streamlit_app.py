@@ -11,7 +11,7 @@ import time
 # ==== Page Setup ====
 st.set_page_config(page_title="NewsMap", layout="wide", page_icon="🎧")
 
-# ==== Load Data Functions ====
+# ==== Load Data ====
 @st.cache_data
 def load_data():
     df = pd.read_csv("cleaned_news_feeds.csv")
@@ -31,67 +31,66 @@ def normalize_country(name):
 
 feed_counts = news_df.groupby('country').size().to_dict()
 
-# ==== Session State Init ====
+# ==== Session State ====
 if 'selected_country' not in st.session_state:
     st.session_state.selected_country = "germany"
 
-# ==== Build the Map ====
-m = folium.Map(location=[20, 0], zoom_start=2)
-
-def style_function(feature):
-    country = normalize_country(feature['properties']['name'])
-    fill_color = "#ff0000" if country == st.session_state.selected_country else "#6495ED"
-    opacity = 0.7 if feed_counts.get(country, 0) > 0 else 0.1
-    return {'fillColor': fill_color, 'color': 'black', 'weight': 1, 'fillOpacity': opacity}
-
-folium.GeoJson(
-    geojson,
-    name="Countries",
-    style_function=style_function,
-    highlight_function=lambda f: {'weight': 3, 'color': 'yellow'},
-    tooltip=folium.GeoJsonTooltip(fields=["name"], aliases=["Country:"])
-).add_to(m)
-
-# ==== Layout: Title and Map ====
+# ==== Layout ====
 st.markdown("<h1 style='margin-bottom: 10px;'>🌍 News Feed Map</h1>", unsafe_allow_html=True)
 map_col, news_col = st.columns([2, 1.5], gap="medium")
 
-with map_col:
-    st_folium(m, width=1300, height=450)
-
-# ==== Map Click Logic ====
-map_data = st.session_state.get("map_data")
-if map_data and map_data.get("last_clicked"):
-    point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
-    for feature in geojson['features']:
-        if shape(feature['geometry']).contains(point):
-            st.session_state.selected_country = normalize_country(feature['properties']['name'])
-            break
-
-# ==== Controls: Select Country and TTS Sidebar ====
+# ==== Sidebar Voice Controls ====
 with st.sidebar:
     st.header("🔊 Voice Controls")
     language = st.selectbox("TTS Language", ["en-US", "en-GB", "de-DE", "fr-FR", "es-ES", "it-IT", "ja-JP", "zh-CN"], index=2)
     volume = st.slider("Volume", 0.0, 1.0, 1.0, 0.1)
     rate = st.slider("Speed", 0.1, 2.0, 1.0, 0.1)
 
-# ==== Country Selector ====
-available_countries = sorted(news_df['country'].dropna().unique())
-selected_country = st.selectbox(
-    "Select a country", 
-    available_countries,
-    index=available_countries.index(st.session_state.selected_country) if st.session_state.selected_country in available_countries else 0
-)
-if selected_country != st.session_state.selected_country:
-    st.session_state.selected_country = selected_country
+# ==== Column 1: Country Dropdown + Map ====
+with map_col:
+    available_countries = sorted(news_df['country'].dropna().unique())
+    selected_country = st.selectbox(
+        "Select a country", 
+        available_countries,
+        index=available_countries.index(st.session_state.selected_country) if st.session_state.selected_country in available_countries else 0
+    )
+    if selected_country != st.session_state.selected_country:
+        st.session_state.selected_country = selected_country
 
-# ==== Display: News Stats and Feed (Top-Aligned) ====
+    m = folium.Map(location=[20, 0], zoom_start=2)
+
+    def style_function(feature):
+        country = normalize_country(feature['properties']['name'])
+        fill_color = "#ff0000" if country == st.session_state.selected_country else "#6495ED"
+        opacity = 0.7 if feed_counts.get(country, 0) > 0 else 0.1
+        return {'fillColor': fill_color, 'color': 'black', 'weight': 1, 'fillOpacity': opacity}
+
+    folium.GeoJson(
+        geojson,
+        name="Countries",
+        style_function=style_function,
+        highlight_function=lambda f: {'weight': 3, 'color': 'yellow'},
+        tooltip=folium.GeoJsonTooltip(fields=["name"], aliases=["Country:"])
+    ).add_to(m)
+
+    map_data = st_folium(m, width=1300, height=450)
+
+    # Map click logic
+    if map_data and map_data.get("last_clicked"):
+        point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
+        for feature in geojson['features']:
+            if shape(feature['geometry']).contains(point):
+                st.session_state.selected_country = normalize_country(feature['properties']['name'])
+                break
+
+# ==== Column 2: Stats + News ====
 media_df = news_df[news_df['country'] == st.session_state.selected_country]
 last_hour = datetime.utcnow() - timedelta(hours=1)
 today = datetime.utcnow().date()
 news_hour, news_today, source_counts = 0, 0, {}
 
 with news_col:
+    # --- News Statistics ---
     st.markdown("### 📊 News Statistics")
     for _, row in media_df.iterrows():
         try:
@@ -110,6 +109,7 @@ with news_col:
     for source, count in sorted(source_counts.items(), key=lambda x: -x[1]):
         st.markdown(f"- **{source}**: {count} today")
 
+    # --- News Feed ---
     st.markdown("---")
     st.markdown("### 📰 News Feed")
     selected_media = st.selectbox("Choose Media Outlet", ["All"] + sorted(media_df['media_name'].dropna().unique()))
@@ -146,8 +146,7 @@ with news_col:
         except Exception as e:
             st.error(f"Error parsing feed: {e}")
 
-    # ==== Global TTS Controls ====
-    full_text = " ".join(all_texts).replace("`", "'")
+    # --- Global TTS ---
     st.markdown("---")
     st.markdown("### 🔊 Global Controls")
     st.markdown("""
@@ -157,6 +156,7 @@ with news_col:
         <button id="global_stop">⏹ Stop</button>
     """, unsafe_allow_html=True)
 
+    full_text = " ".join(all_texts).replace("`", "'")
     st.components.v1.html(f"""
         <script>
             const globalUtter = new SpeechSynthesisUtterance(`{full_text}`);
