@@ -73,7 +73,7 @@ with col1:
     st.markdown("### Map")
     map_data = st_folium(m, width=650, height=450)
 
-    # Move country selector here UNDER the map
+    # Country selector below the map
     available_countries = sorted(news_df['country'].dropna().unique())
     selected_country = st.selectbox(
         "Select a country (or click on the map)",
@@ -201,11 +201,10 @@ with feed_container:
                     <script>
                     const btn = document.getElementById('{btn_id}');
                     btn.onclick = () => {{
-                        if(window.synth) {{
+                        if(window.synth && window.synth.speaking) {{
                             window.synth.cancel();
-                        }} else {{
-                            window.synth = window.speechSynthesis;
                         }}
+                        window.synth = window.speechSynthesis;
                         const utterance = new SpeechSynthesisUtterance(`{text_to_read}`);
                         utterance.lang = '{language}';
                         utterance.volume = {volume};
