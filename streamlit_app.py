@@ -8,6 +8,9 @@ from shapely.geometry import shape, Point
 from datetime import datetime, timedelta
 import time
 from urllib.parse import urlparse
+from gtts import gTTS
+import tempfile
+import os
 
 # ==== Page Setup ====
 st.set_page_config(page_title="NewsMap", layout="wide", page_icon="🎧")
@@ -51,10 +54,10 @@ st.markdown("<h1 style='margin-bottom: 10px;'>🌍 PRESSEBOT - News Cockpit </h1
 
 col1, col2, col3 = st.columns([3, 0.2, 2], gap="medium")
 
+# ==== Left: Country Selector and Map ====
 with col1:
     available_countries = sorted(news_df['country'].dropna().unique())
 
-    # --- Dropdown (syncs with session state) ---
     selected_country_dropdown = st.selectbox(
         "Select a country",
         available_countries,
@@ -62,11 +65,9 @@ with col1:
         key="country_select"
     )
 
-    # Update from dropdown if needed
     if selected_country_dropdown != st.session_state.selected_country:
         st.session_state.selected_country = selected_country_dropdown
 
-    # --- Map (syncs with session state) ---
     center_coords = get_country_centroid(st.session_state.selected_country)
     m = folium.Map(location=center_coords, zoom_start=4)
 
@@ -86,7 +87,6 @@ with col1:
 
     map_data = st_folium(m, width=700, height=450)
 
-    # --- Handle map click (sync back to dropdown + rerun) ---
     if map_data and map_data.get("last_clicked"):
         point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
         for feature in geojson['features']:
@@ -95,9 +95,7 @@ with col1:
                 if clicked_country != st.session_state.selected_country:
                     st.session_state.selected_country = clicked_country
 
-
-
-    # ---- News Statistics Grid BELOW Map ----
+    # ---- News Statistics Grid ----
     st.markdown("### 📊 News Statistics")
     media_df = news_df[news_df['country'] == st.session_state.selected_country]
     last_hour = datetime.utcnow() - timedelta(hours=1)
@@ -139,9 +137,11 @@ with col1:
                 st.markdown(f"**{stat['media_name']}**")
                 st.markdown(f"{stat['today_count']} today")
 
+# ==== Spacer ====
 with col2:
-    st.write("")  # Spacer
+    st.write("")
 
+# ==== Right: Feed Viewer & Global TTS ====
 with col3:
     st.markdown("---")
     st.markdown("### 📰 News Feed")
@@ -165,8 +165,6 @@ with col3:
         except Exception as e:
             st.error(f"Error parsing feed: {e}")
 
-    # Optional: Global TTS Controls
+    # === Global Text-to-Speech Controls ===
     st.markdown("---")
-    st.markdown("### 🔊 Global Controls")
-    full_text = " ".join(all_texts).replace("`", "'")
-    # Placeholder for TTS control panel or external script
+    st.markdown("### 🔊
