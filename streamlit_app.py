@@ -33,7 +33,7 @@ feed_counts = news_df.groupby('country').size().to_dict()
 
 # ==== Session State Init ====
 if 'selected_country' not in st.session_state:
-    st.session_state.selected_country = None
+    st.session_state.selected_country = "germany"
 
 # ==== Build the Map ====
 m = folium.Map(location=[20, 0], zoom_start=2)
@@ -54,7 +54,7 @@ folium.GeoJson(
 
 # ==== Layout: Title and Map ====
 st.markdown("<h1 style='margin-bottom: 10px;'>🌍 News Feed Map</h1>", unsafe_allow_html=True)
-map_col, news_col = st.columns([2, 1.2], gap="medium")
+map_col, news_col = st.columns([2, 1.5], gap="medium")
 
 with map_col:
     st_folium(m, width=1300, height=450)
@@ -75,23 +75,24 @@ with st.sidebar:
     volume = st.slider("Volume", 0.0, 1.0, 1.0, 0.1)
     rate = st.slider("Speed", 0.1, 2.0, 1.0, 0.1)
 
-col1, col2, col3 = st.columns([1, 1, 1.2], gap="medium")
-
 # ==== Country Selector ====
-with col1:
-    available_countries = sorted(news_df['country'].dropna().unique())
-    selected_country = st.selectbox("Select a country", available_countries, index=available_countries.index(st.session_state.selected_country) if st.session_state.selected_country in available_countries else 0)
-    if selected_country != st.session_state.selected_country:
-        st.session_state.selected_country = selected_country
+available_countries = sorted(news_df['country'].dropna().unique())
+selected_country = st.selectbox(
+    "Select a country", 
+    available_countries,
+    index=available_countries.index(st.session_state.selected_country) if st.session_state.selected_country in available_countries else 0
+)
+if selected_country != st.session_state.selected_country:
+    st.session_state.selected_country = selected_country
 
-# ==== News Stats ====
-with col2:
+# ==== Display: News Stats and Feed (Top-Aligned) ====
+media_df = news_df[news_df['country'] == st.session_state.selected_country]
+last_hour = datetime.utcnow() - timedelta(hours=1)
+today = datetime.utcnow().date()
+news_hour, news_today, source_counts = 0, 0, {}
+
+with news_col:
     st.markdown("### 📊 News Statistics")
-    media_df = news_df[news_df['country'] == st.session_state.selected_country]
-    last_hour = datetime.utcnow() - timedelta(hours=1)
-    today = datetime.utcnow().date()
-    news_hour, news_today, source_counts = 0, 0, {}
-
     for _, row in media_df.iterrows():
         try:
             feed = feedparser.parse(row['newsfeed_url'])
@@ -109,14 +110,10 @@ with col2:
     for source, count in sorted(source_counts.items(), key=lambda x: -x[1]):
         st.markdown(f"- **{source}**: {count} today")
 
-# ==== News Feed Display ====
-with col3:
-    st.markdown("### News Feed")
+    st.markdown("---")
+    st.markdown("### 📰 News Feed")
     selected_media = st.selectbox("Choose Media Outlet", ["All"] + sorted(media_df['media_name'].dropna().unique()))
-    if selected_media != "All":
-        feed_rows = media_df[media_df['media_name'] == selected_media]
-    else:
-        feed_rows = media_df
+    feed_rows = media_df[media_df['media_name'] == selected_media] if selected_media != "All" else media_df
 
     all_texts = []
     for _, row in feed_rows.iterrows():
