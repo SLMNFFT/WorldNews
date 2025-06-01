@@ -10,7 +10,8 @@ import time
 from urllib.parse import urlparse
 from gtts import gTTS
 import os
-import base64
+from timezonefinder import TimezoneFinder
+import pytz
 
 # ==== Page Setup ====
 st.set_page_config(page_title="NewsMap", layout="wide", page_icon="🎧")
@@ -54,14 +55,114 @@ if 'selected_country' not in st.session_state:
 if 'country_select' not in st.session_state:
     st.session_state.country_select = st.session_state.selected_country
 
-# ==== Handle map click rerun logic ====
-if 'clicked_country' in st.session_state:
-    st.session_state.selected_country = st.session_state.clicked_country
-    st.session_state.country_select = st.session_state.clicked_country
-    del st.session_state.clicked_country  # clear temp flag
+def on_country_change():
+    st.session_state.selected_country = st.session_state.country_select
 
-# ==== Layout ====
+# ==== Local Time & Weather (Header) ====
+
 st.markdown("<h1 style='margin-bottom: 10px;'>🌍 PRESSEBOT - News Cockpit</h1>", unsafe_allow_html=True)
+
+center_coords = get_country_centroid(st.session_state.selected_country)
+lat, lon = center_coords
+
+def get_local_time(lat, lon):
+    tf = TimezoneFinder()
+    try:
+        tz_str = tf.timezone_at(lat=lat, lng=lon)
+        if not tz_str:
+            return "N/A"
+        tz = pytz.timezone(tz_str)
+        local_time = datetime.now(tz)
+        return local_time.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return "N/A"
+
+def get_weather(lat, lon):
+    try:
+        url = f"https://wttr.in/{lat},{lon}?format=j1"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        current = data['current_condition'][0]
+        weather_state = current['weatherDesc'][0]['value']
+        temp_c = current['temp_C']
+        humidity = current['humidity']
+        wind_kmph = current['windspeedKmph']
+        return f"{weather_state}, {temp_c}°C, Humidity: {humidity}%, Wind: {wind_kmph} km/h"
+    except Exception as e:
+        print(f"Weather fetch error: {e}")
+        return None
+
+local_time = get_local_time(lat, lon)
+weather_info = get_weather(lat, lon)
+
+# Collect all news texts for TTS (you can keep this here for audio setup)
+media_df = news_df[news_df['country'] == st.session_state.selected_country]
+all_texts = []
+for _, row in media_df.iterrows():
+    try:
+        feed = feedparser.parse(row['newsfeed_url'])
+        if feed.entries:
+            text_block = " ".join(entry.title.replace("`", "'").replace("\n", " ") for entry in feed.entries[:5])
+            all_texts.append(f"{row['media_name']}: {text_block}")
+    except Exception:
+        pass
+
+# === HEADER WITH TWO COLUMNS ===
+header_col1, header_col2 = st.columns([2, 3])
+
+with header_col1:
+    st.markdown(
+        f"""
+        <div style='text-align:left; margin-bottom: 15px;'>
+            <h3>⏰ Local Time & 🌤 Weather</h3>
+            <p><strong>Location:</strong> {st.session_state.selected_country.title()}</p>
+            <p style='font-size:28px; font-weight:bold; margin: 0;'>{local_time}</p>
+            <p><strong>Weather:</strong> {weather_info if weather_info else 'Unable to retrieve weather data'}</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with header_col2:
+    st.markdown(
+    """
+    <div style='text-align:left; margin-bottom: 15px;'>
+        <h3>🔊 Audio Setup</h3>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+
+    languages = {
+        'English (US)': 'en',
+        'English (UK)': 'en-uk',
+        'German': 'de',
+        'French': 'fr',
+        'Spanish': 'es',
+        'Italian': 'it',
+        'Portuguese': 'pt',
+        'Russian': 'ru',
+        'Chinese (Mandarin)': 'zh-CN',
+        'Arabic': 'ar'
+    }
+    selected_lang = st.selectbox("Select Language", list(languages.keys()), index=0, key="audio_lang")
+    tts_speed = st.slider("Speech Speed (0.5 = slow, 2.0 = fast)", 0.5, 2.0, 1.0, 0.1, key="audio_speed")
+
+    if st.button("Play Combined News Summary Audio", key="play_audio"):
+        combined_text = "\n".join(all_texts)
+        if combined_text.strip():
+            # gTTS does not support speech speed adjustment directly; ignoring speed here.
+            tts = gTTS(text=combined_text, lang=languages[selected_lang].split('-')[0], slow=False)
+            audio_file = "news_summary.mp3"
+            tts.save(audio_file)
+            audio_bytes = open(audio_file, "rb").read()
+            st.audio(audio_bytes, format="audio/mp3")
+            os.remove(audio_file)
+        else:
+            st.warning("No text to read.")
+
+# ==== Main layout ====
 col1, col2, col3 = st.columns([3, 0.01, 2], gap="medium")
 
 with col1:
@@ -70,15 +171,11 @@ with col1:
         "Select a country",
         available_countries,
         index=available_countries.index(st.session_state.country_select),
-        key="country_select"
+        key="country_select",
+        on_change=on_country_change
     )
 
-    if selected_country_dropdown != st.session_state.selected_country:
-        st.session_state.selected_country = selected_country_dropdown
-        st.session_state.country_select = selected_country_dropdown
-
     # === Map ===
-    center_coords = get_country_centroid(st.session_state.selected_country)
     m = folium.Map(location=center_coords, zoom_start=4)
 
     def style_function(feature):
@@ -97,15 +194,15 @@ with col1:
 
     map_data = st_folium(m, width=700, height=450)
 
-    # === Handle map clicks ===
     if map_data and map_data.get("last_clicked"):
         point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
         for feature in geojson['features']:
             if shape(feature['geometry']).contains(point):
                 clicked_country = normalize_country(feature['properties']['name'])
                 if clicked_country in available_countries and clicked_country != st.session_state.selected_country:
-                    st.session_state.clicked_country = clicked_country
-                    st.rerun()
+                    st.session_state.selected_country = clicked_country
+                    st.session_state.country_select = clicked_country
+                    st.experimental_rerun()
 
     # === News Statistics ===
     st.markdown("### 📊 News Statistics")
@@ -159,59 +256,13 @@ with col3:
     selected_media = st.selectbox("Choose Media Outlet", ["All"] + sorted(media_df['media_name'].dropna().unique()))
     feed_rows = media_df[media_df['media_name'] == selected_media] if selected_media != "All" else media_df
 
-    all_texts = []
-
     for _, row in feed_rows.iterrows():
         try:
             feed = feedparser.parse(row['newsfeed_url'])
             if feed.entries:
                 st.subheader(f"📰 {row['media_name']}")
                 st.caption(f"URL: {row['newsfeed_url']}")
-                text_block = " ".join(entry.title.replace("`", "'").replace("\n", " ") for entry in feed.entries[:5])
-                all_texts.append(f"{row['media_name']}: {text_block}")
-
                 for entry in feed.entries[:5]:
                     st.markdown(f"- [{entry.title}]({entry.link})")
         except Exception as e:
             st.error(f"Error parsing feed: {e}")
-
-    # === 🔊 Global Audio Controls ===
-    st.markdown("---")
-    st.markdown("### 🔊 Audio Setup")
-
-    languages = {
-        'English (US)': 'en',
-        'English (UK)': 'en-uk',
-        'German': 'de',
-        'French': 'fr',
-        'Spanish': 'es',
-        'Italian': 'it',
-        'Portuguese': 'pt',
-        'Russian': 'ru',
-        'Chinese (Mandarin)': 'zh-CN',
-        'Japanese': 'ja',
-        'Hindi': 'hi',
-    }
-
-    selected_lang_name = st.selectbox("Select Language", list(languages.keys()), index=0)
-    selected_lang_code = languages[selected_lang_name]
-    speech_speed = st.radio("Speech Speed", options=["Normal", "Slow"], index=0)
-
-    if all_texts:
-        full_text = " ".join(all_texts).replace("`", "'")
-        audio_file_path = "news_summary.mp3"
-
-        if st.button("▶️ Generate & Play Audio"):
-            try:
-                tts = gTTS(text=full_text, lang=selected_lang_code, slow=(speech_speed == "Slow"))
-                tts.save(audio_file_path)
-                audio_bytes = open(audio_file_path, "rb").read()
-                st.audio(audio_bytes, format="audio/mp3")
-            except Exception as e:
-                st.error(f"Failed to generate audio: {e}")
-
-        if os.path.exists(audio_file_path):
-            with open(audio_file_path, "rb") as file:
-                b64 = base64.b64encode(file.read()).decode()
-                href = f'<a href="data:audio/mp3;base64,{b64}" download="news_summary.mp3">⬇️ Download Audio</a>'
-                st.markdown(href, unsafe_allow_html=True)
