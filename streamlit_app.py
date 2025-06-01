@@ -163,7 +163,30 @@ with col3:
 
     # === 🔊 Global Audio Controls ===
     st.markdown("---")
-    st.markdown("### 🔊 Global Controls")
+    st.markdown("### 🔊 Audio Setup")
+
+    # Languages supported by gTTS (partial list)
+    languages = {
+        'English (US)': 'en',
+        'English (UK)': 'en-uk',
+        'German': 'de',
+        'French': 'fr',
+        'Spanish': 'es',
+        'Italian': 'it',
+        'Portuguese': 'pt',
+        'Russian': 'ru',
+        'Chinese (Mandarin)': 'zh-CN',
+        'Japanese': 'ja',
+        'Hindi': 'hi',
+    }
+
+    selected_lang_name = st.selectbox("Select Language", list(languages.keys()), index=0)
+    selected_lang_code = languages[selected_lang_name]
+
+    # Speaker accents / variants (simulate different voices by accents/languages)
+    # gTTS doesn't have multiple speakers, so just language/accent options.
+
+    speech_speed = st.radio("Speech Speed", options=["Normal", "Slow"], index=0)
 
     if all_texts:
         full_text = " ".join(all_texts).replace("`", "'")
@@ -171,7 +194,7 @@ with col3:
 
         if st.button("▶️ Generate & Play Audio"):
             try:
-                tts = gTTS(full_text)
+                tts = gTTS(text=full_text, lang=selected_lang_code, slow=(speech_speed == "Slow"))
                 tts.save(audio_file_path)
                 audio_bytes = open(audio_file_path, "rb").read()
                 st.audio(audio_bytes, format="audio/mp3")
