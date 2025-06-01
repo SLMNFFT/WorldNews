@@ -7,3 +7,5 @@ streamlit-folium==0.15.0
 shapely==2.0.4
 pyarrow==15.0.2
 diskcache==5.6.3
+cmake>=3.18
+
