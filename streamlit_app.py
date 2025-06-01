@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 import time
 from urllib.parse import urlparse
 from gtts import gTTS
-import tempfile
 import os
+import base64
 
 # ==== Page Setup ====
 st.set_page_config(page_title="NewsMap", layout="wide", page_icon="🎧")
@@ -54,7 +54,6 @@ st.markdown("<h1 style='margin-bottom: 10px;'>🌍 PRESSEBOT - News Cockpit </h1
 
 col1, col2, col3 = st.columns([3, 0.2, 2], gap="medium")
 
-# ==== Left: Country Selector and Map ====
 with col1:
     available_countries = sorted(news_df['country'].dropna().unique())
 
@@ -95,7 +94,6 @@ with col1:
                 if clicked_country != st.session_state.selected_country:
                     st.session_state.selected_country = clicked_country
 
-    # ---- News Statistics Grid ----
     st.markdown("### 📊 News Statistics")
     media_df = news_df[news_df['country'] == st.session_state.selected_country]
     last_hour = datetime.utcnow() - timedelta(hours=1)
@@ -137,11 +135,9 @@ with col1:
                 st.markdown(f"**{stat['media_name']}**")
                 st.markdown(f"{stat['today_count']} today")
 
-# ==== Spacer ====
 with col2:
     st.write("")
 
-# ==== Right: Feed Viewer & Global TTS ====
 with col3:
     st.markdown("---")
     st.markdown("### 📰 News Feed")
@@ -165,7 +161,25 @@ with col3:
         except Exception as e:
             st.error(f"Error parsing feed: {e}")
 
-    # === Global Text-to-Speech Controls ===
+    # === 🔊 Global Audio Controls ===
     st.markdown("---")
     st.markdown("### 🔊 Global Controls")
 
+    if all_texts:
+        full_text = " ".join(all_texts).replace("`", "'")
+        audio_file_path = "news_summary.mp3"
+
+        if st.button("▶️ Generate & Play Audio"):
+            try:
+                tts = gTTS(full_text)
+                tts.save(audio_file_path)
+                audio_bytes = open(audio_file_path, "rb").read()
+                st.audio(audio_bytes, format="audio/mp3")
+            except Exception as e:
+                st.error(f"Failed to generate audio: {e}")
+
+        if os.path.exists(audio_file_path):
+            with open(audio_file_path, "rb") as file:
+                b64 = base64.b64encode(file.read()).decode()
+                href = f'<a href="data:audio/mp3;base64,{b64}" download="news_summary.mp3">⬇️ Download Audio</a>'
+                st.markdown(href, unsafe_allow_html=True)
