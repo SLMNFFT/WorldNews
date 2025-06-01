@@ -136,8 +136,6 @@ with col_stats:
 with col_newsfeed:
     # News Feed (unchanged)
     st.markdown("### News Feed")
-    st.markdown("<div style='margin-top: -15px'></div>", unsafe_allow_html=True)
-
     feed_container = st.container()
 
 # === Map click handling (AFTER rendering the map!) ===
