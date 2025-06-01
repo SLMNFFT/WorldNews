@@ -46,19 +46,22 @@ def get_country_centroid(country_name):
             return [centroid.y, centroid.x]
     return [20, 0]  # fallback
 
-# ==== Session State Initialization ====
-available_countries = sorted(news_df['country'].dropna().unique())
-
+# ==== Initialize selected_country in session_state ====
 if 'selected_country' not in st.session_state:
-    st.session_state.selected_country = "germany"
+    # Default country - make sure it is in available_countries
+    default_country = "germany"
+    available_countries = sorted(news_df['country'].dropna().unique())
+    if default_country not in available_countries:
+        default_country = available_countries[0]
+    st.session_state.selected_country = default_country
+else:
+    available_countries = sorted(news_df['country'].dropna().unique())
 
-if 'country_select' not in st.session_state:
-    st.session_state.country_select = st.session_state.selected_country
-
+# Callback to handle country dropdown change
 def on_country_change():
     st.session_state.selected_country = st.session_state.country_select
 
-# ==== Local Time & Weather (Header) ====
+# ==== HEADER ====
 
 st.markdown("<h1 style='margin-bottom: 10px;'>🌍 PRESSEBOT - News Cockpit</h1>", unsafe_allow_html=True)
 
@@ -95,7 +98,6 @@ def get_weather(lat, lon):
 local_time = get_local_time(lat, lon)
 weather_info = get_weather(lat, lon)
 
-# Collect all news texts for TTS (you can keep this here for audio setup)
 media_df = news_df[news_df['country'] == st.session_state.selected_country]
 all_texts = []
 for _, row in media_df.iterrows():
@@ -107,7 +109,6 @@ for _, row in media_df.iterrows():
     except Exception:
         pass
 
-# === HEADER WITH TWO COLUMNS ===
 header_col1, header_col2 = st.columns([2, 3])
 
 with header_col1:
@@ -125,14 +126,13 @@ with header_col1:
 
 with header_col2:
     st.markdown(
-    """
-    <div style='text-align:left; margin-bottom: 15px;'>
-        <h3>🔊 Audio Setup</h3>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
+        """
+        <div style='text-align:left; margin-bottom: 15px;'>
+            <h3>🔊 Audio Setup</h3>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     languages = {
         'English (US)': 'en',
@@ -152,7 +152,6 @@ with header_col2:
     if st.button("Play Combined News Summary Audio", key="play_audio"):
         combined_text = "\n".join(all_texts)
         if combined_text.strip():
-            # gTTS does not support speech speed adjustment directly; ignoring speed here.
             tts = gTTS(text=combined_text, lang=languages[selected_lang].split('-')[0], slow=False)
             audio_file = "news_summary.mp3"
             tts.save(audio_file)
@@ -162,20 +161,21 @@ with header_col2:
         else:
             st.warning("No text to read.")
 
-# ==== Main layout ====
+# ==== MAIN LAYOUT ====
+
 col1, col2, col3 = st.columns([3, 0.01, 2], gap="medium")
 
 with col1:
-    # === Country Dropdown ===
+    # --- Country Dropdown (key: country_select) ---
     selected_country_dropdown = st.selectbox(
         "Select a country",
         available_countries,
-        index=available_countries.index(st.session_state.country_select),
+        index=available_countries.index(st.session_state.selected_country),
         key="country_select",
         on_change=on_country_change
     )
 
-    # === Map ===
+    # --- Map ---
     m = folium.Map(location=center_coords, zoom_start=4)
 
     def style_function(feature):
@@ -194,17 +194,20 @@ with col1:
 
     map_data = st_folium(m, width=700, height=450)
 
+    # Handle map clicks to update selected country and dropdown (if changed)
     if map_data and map_data.get("last_clicked"):
         point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
         for feature in geojson['features']:
             if shape(feature['geometry']).contains(point):
                 clicked_country = normalize_country(feature['properties']['name'])
                 if clicked_country in available_countries and clicked_country != st.session_state.selected_country:
+                    # Update the selected country state ONLY here
                     st.session_state.selected_country = clicked_country
                     st.session_state.country_select = clicked_country
-                    st.experimental_rerun()
+                    st.experimental_rerun()  # re-run to update UI
+                    break  # exit loop once found
 
-    # === News Statistics ===
+    # --- News Statistics ---
     st.markdown("### 📊 News Statistics")
     media_df = news_df[news_df['country'] == st.session_state.selected_country]
     last_hour = datetime.utcnow() - timedelta(hours=1)
@@ -254,7 +257,7 @@ with col3:
     st.markdown("### 📰 News Feed")
 
     selected_media = st.selectbox("Choose Media Outlet", ["All"] + sorted(media_df['media_name'].dropna().unique()))
-    feed_rows = media_df[media_df['media_name'] == selected_media] if selected_media != "All" else media_df
+    feed_rows = media_df if selected_media == "All" else media_df[media_df['media_name'] == selected_media]
 
     for _, row in feed_rows.iterrows():
         try:
