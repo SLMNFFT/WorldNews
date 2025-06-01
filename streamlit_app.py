@@ -73,9 +73,7 @@ with col1:
     st.markdown("### Map")
     map_data = st_folium(m, width=650, height=450)
 
-# === Filters + Stats Column ===
-with col2:
-    st.markdown("### Filters")
+    # Move country selector here UNDER the map
     available_countries = sorted(news_df['country'].dropna().unique())
     selected_country = st.selectbox(
         "Select a country (or click on the map)",
@@ -88,7 +86,8 @@ with col2:
     if selected_country != st.session_state.selected_country:
         st.session_state.selected_country = selected_country
 
-    # === News Stats ===
+# === Filters + Stats Column ===
+with col2:
     st.markdown("### 📊 News Statistics")
     country_media = news_df[news_df['country'] == st.session_state.selected_country]
 
