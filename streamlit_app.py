@@ -27,14 +27,13 @@ def normalize_country(name):
 # Prepare feed counts by country
 feed_counts = news_df.groupby('country').size().to_dict()
 
-# Initialize session state for selected country
+# Initialize session state
 if 'selected_country' not in st.session_state:
     st.session_state.selected_country = None
 
 # === Build Folium Map ===
 m = folium.Map(location=[20, 0], zoom_start=2)
 
-# Function to style countries
 def style_function(feature):
     country_name = normalize_country(feature['properties']['name'])
     fill_color = "#ff0000" if country_name == st.session_state.selected_country else "#6495ED"
@@ -49,42 +48,21 @@ def style_function(feature):
 def highlight_function(feature):
     return {'weight': 3, 'color': 'yellow'}
 
-# Add GeoJSON layer
-geojson_layer = folium.GeoJson(
+folium.GeoJson(
     geojson,
     name="Countries",
     style_function=style_function,
     highlight_function=highlight_function,
-    tooltip=folium.GeoJsonTooltip(
-        fields=["name"],
-        aliases=["Country:"],
-        localize=True
-    )
+    tooltip=folium.GeoJsonTooltip(fields=["name"], aliases=["Country:"])
 ).add_to(m)
 
-# Render map and capture click
-map_data = st_folium(m, width=650, height=450)
-
-if map_data and map_data.get("last_clicked"):
-    point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
-    selected = None
-    for feature in geojson['features']:
-        geom = shape(feature['geometry'])
-        if geom.contains(point):
-            selected = normalize_country(feature['properties']['name'])
-            break
-    if selected:
-        st.session_state.selected_country = selected
-
-# === UI Layout ===
+# === Layout: 3 columns ===
 st.markdown("<h1 style='margin-bottom: 10px;'>🌍 News Feed Map</h1>", unsafe_allow_html=True)
-
-# Layout: 3 columns (map, controls, news feed)
 col1, col2, col3 = st.columns([1, 1, 1.2], gap="medium")
 
 with col1:
     st.markdown("### Map")
-    st_folium(m, width=650, height=450)
+    map_data = st_folium(m, width=650, height=450)
 
 with col2:
     st.markdown("### Filters")
@@ -100,19 +78,33 @@ with col2:
     if selected_country != st.session_state.selected_country:
         st.session_state.selected_country = selected_country
 
-    country_media = news_df[news_df['country'] == st.session_state.selected_country]
-    media_names = sorted(country_media['media_name'].dropna().unique())
-    selected_media = st.selectbox("Select a Media Outlet", ["All"] + media_names)
-
 with col3:
-    # Scrollable news feed container
-    st.markdown(
-        """
-        <div style='height: 500px; overflow-y: auto; padding-right: 10px;'>
-        """, unsafe_allow_html=True
+    st.markdown("### News Feed")
+    feed_container = st.container()
+
+# === Map click handling (AFTER rendering the map!) ===
+if map_data and map_data.get("last_clicked"):
+    point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
+    selected = None
+    for feature in geojson['features']:
+        geom = shape(feature['geometry'])
+        if geom.contains(point):
+            selected = normalize_country(feature['properties']['name'])
+            break
+    if selected:
+        st.session_state.selected_country = selected
+
+# === News Feed Rendering ===
+with feed_container:
+    country_media = news_df[news_df['country'] == st.session_state.selected_country]
+    selected_media = st.selectbox(
+        "Select a Media Outlet", ["All"] + sorted(country_media['media_name'].dropna().unique())
     )
 
-    feed_rows = country_media if selected_media == "All" else country_media[country_media['media_name'] == selected_media]
+    if selected_media != "All":
+        feed_rows = country_media[country_media['media_name'] == selected_media]
+    else:
+        feed_rows = country_media
 
     if feed_rows.empty:
         st.warning("No feeds found for the selected country or media.")
@@ -127,5 +119,3 @@ with col3:
                         st.markdown(f"- [{entry.title}]({entry.link})")
             except Exception as e:
                 st.error(f"Error parsing feed: {e}")
-
-    st.markdown("</div>", unsafe_allow_html=True)
