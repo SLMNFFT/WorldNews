@@ -82,25 +82,6 @@ with map_col:
             if shape(feature['geometry']).contains(point):
                 st.session_state.selected_country = normalize_country(feature['properties']['name'])
                 break
-    # --- News Statistics ---
-    st.markdown("### 📊 News Statistics")
-    for _, row in media_df.iterrows():
-        try:
-            feed = feedparser.parse(row['newsfeed_url'])
-            hour_count = sum(1 for entry in feed.entries if hasattr(entry, 'published_parsed') and datetime.fromtimestamp(time.mktime(entry.published_parsed)) > last_hour)
-            today_count = sum(1 for entry in feed.entries if hasattr(entry, 'published_parsed') and datetime.fromtimestamp(time.mktime(entry.published_parsed)).date() == today)
-            news_hour += hour_count
-            news_today += today_count
-            source_counts[row['media_name']] = today_count
-        except:
-            pass
-
-    st.metric("🕐 Last Hour", news_hour)
-    st.metric("📅 Today", news_today)
-    st.markdown("**🗞 Per Source:**")
-    for source, count in sorted(source_counts.items(), key=lambda x: -x[1]):
-        st.markdown(f"- **{source}**: {count} today")
-
 
 # ==== Column 2: Stats + News ====
 media_df = news_df[news_df['country'] == st.session_state.selected_country]
@@ -109,7 +90,6 @@ today = datetime.utcnow().date()
 news_hour, news_today, source_counts = 0, 0, {}
 
 with news_col:
-
 
     # --- News Feed ---
     st.markdown("---")
@@ -147,7 +127,24 @@ with news_col:
                 """, height=0)
         except Exception as e:
             st.error(f"Error parsing feed: {e}")
+    # --- News Statistics ---
+    st.markdown("### 📊 News Statistics")
+    for _, row in media_df.iterrows():
+        try:
+            feed = feedparser.parse(row['newsfeed_url'])
+            hour_count = sum(1 for entry in feed.entries if hasattr(entry, 'published_parsed') and datetime.fromtimestamp(time.mktime(entry.published_parsed)) > last_hour)
+            today_count = sum(1 for entry in feed.entries if hasattr(entry, 'published_parsed') and datetime.fromtimestamp(time.mktime(entry.published_parsed)).date() == today)
+            news_hour += hour_count
+            news_today += today_count
+            source_counts[row['media_name']] = today_count
+        except:
+            pass
 
+    st.metric("🕐 Last Hour", news_hour)
+    st.metric("📅 Today", news_today)
+    st.markdown("**🗞 Per Source:**")
+    for source, count in sorted(source_counts.items(), key=lambda x: -x[1]):
+        st.markdown(f"- **{source}**: {count} today")
     # --- Global TTS ---
     st.markdown("---")
     st.markdown("### 🔊 Global Controls")
