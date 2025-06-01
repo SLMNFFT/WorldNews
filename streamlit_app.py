@@ -4,7 +4,7 @@ import feedparser
 import requests
 import folium
 from streamlit_folium import st_folium
-from shapely.geometry import shape
+from shapely.geometry import shape, Point
 
 # === Load and Normalize Data ===
 @st.cache_data
@@ -37,7 +37,7 @@ m = folium.Map(location=[20, 0], zoom_start=2)
 # Function to style countries
 def style_function(feature):
     country_name = normalize_country(feature['properties']['name'])
-    fill_color = "#ff0000" if country_name == st.session_state.selected_country else "#6495ED"  # red selected, cornflower blue otherwise
+    fill_color = "#ff0000" if country_name == st.session_state.selected_country else "#6495ED"
     opacity = 0.7 if feed_counts.get(country_name, 0) > 0 else 0.1
     return {
         'fillColor': fill_color,
@@ -46,11 +46,10 @@ def style_function(feature):
         'fillOpacity': opacity,
     }
 
-# Function to highlight on hover
 def highlight_function(feature):
-    return {'weight':3, 'color':'yellow'}
+    return {'weight': 3, 'color': 'yellow'}
 
-# Add GeoJSON layer with tooltips and click handling
+# Add GeoJSON layer
 geojson_layer = folium.GeoJson(
     geojson,
     name="Countries",
@@ -63,43 +62,11 @@ geojson_layer = folium.GeoJson(
     )
 ).add_to(m)
 
-# Add click handler to update selected country in Streamlit
-click_script = """
-function onMapClick(e) {
-    let layer = e.target;
-    let props = layer.feature.properties;
-    let countryName = props.name.toLowerCase();
-    // Send country name back to Streamlit
-    window.parent.postMessage({isStreamlitMessage:true, type:'COUNTRY_CLICKED', country: countryName}, "*");
-}
-"""
+# Render map and capture click
+map_data = st_folium(m, width=650, height=450)
 
-# Attach click event to each country feature
-for feature in geojson_layer.data['features']:
-    # Add onEachFeature JS function to add click listener
-    feature['onEachFeature'] = """
-    function(feature, layer) {
-        layer.on({
-            click: function(e) {
-                var countryName = feature.properties.name.toLowerCase();
-                window.parent.postMessage({isStreamlitMessage:true, type:'COUNTRY_CLICKED', country: countryName}, "*");
-            }
-        });
-    }
-    """
-
-# Because folium does not support direct JS in GeoJson features easily,
-# We will add a simpler approach using st_folium and catch clicks
-
-map_data = st_folium(m, width=700, height=450)
-
-# Process clicks returned from st_folium
 if map_data and map_data.get("last_clicked"):
-    latlng = map_data["last_clicked"]
-    # Find which country polygon contains this lat/lng
-    from shapely.geometry import Point
-
-    point = Point(latlng['lng'], latlng['lat'])
+    point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
     selected = None
     for feature in geojson['features']:
         geom = shape(feature['geometry'])
@@ -109,37 +76,56 @@ if map_data and map_data.get("last_clicked"):
     if selected:
         st.session_state.selected_country = selected
 
-# === UI ===
-st.title("🌍 News Feed Map")
+# === UI Layout ===
+st.markdown("<h1 style='margin-bottom: 10px;'>🌍 News Feed Map</h1>", unsafe_allow_html=True)
 
-# Select box fallback to select country manually
-available_countries = sorted(news_df['country'].dropna().unique())
-selected_country = st.selectbox("Select a country (or click on the map)", available_countries,
-                                index=available_countries.index(st.session_state.selected_country)
-                                      if st.session_state.selected_country in available_countries else 0,
-                                key="selected_country_manual")
+# Layout: 3 columns (map, controls, news feed)
+col1, col2, col3 = st.columns([1, 1, 1.2], gap="medium")
 
-# Sync manual selection to session state
-if selected_country != st.session_state.selected_country:
-    st.session_state.selected_country = selected_country
+with col1:
+    st.markdown("### Map")
+    st_folium(m, width=650, height=450)
 
-# Show feeds for the selected country
-country_media = news_df[news_df['country'] == st.session_state.selected_country]
-media_names = sorted(country_media['media_name'].dropna().unique())
-selected_media = st.selectbox("Select a Media Outlet", ["All"] + media_names)
+with col2:
+    st.markdown("### Filters")
+    available_countries = sorted(news_df['country'].dropna().unique())
+    selected_country = st.selectbox(
+        "Select a country (or click on the map)",
+        available_countries,
+        index=available_countries.index(st.session_state.selected_country)
+        if st.session_state.selected_country in available_countries else 0,
+        key="selected_country_manual"
+    )
 
-if selected_media != "All":
-    feed_rows = country_media[country_media['media_name'] == selected_media]
-else:
-    feed_rows = country_media
+    if selected_country != st.session_state.selected_country:
+        st.session_state.selected_country = selected_country
 
-for _, row in feed_rows.iterrows():
-    try:
-        feed = feedparser.parse(row['newsfeed_url'])
-        if feed.entries:
-            st.subheader(f"📰 {row['media_name']}")
-            st.caption(f"URL: {row['newsfeed_url']}")
-            for entry in feed.entries[:5]:
-                st.markdown(f"- [{entry.title}]({entry.link})")
-    except Exception as e:
-        st.error(f"Error parsing feed: {e}")
+    country_media = news_df[news_df['country'] == st.session_state.selected_country]
+    media_names = sorted(country_media['media_name'].dropna().unique())
+    selected_media = st.selectbox("Select a Media Outlet", ["All"] + media_names)
+
+with col3:
+    # Scrollable news feed container
+    st.markdown(
+        """
+        <div style='height: 500px; overflow-y: auto; padding-right: 10px;'>
+        """, unsafe_allow_html=True
+    )
+
+    feed_rows = country_media if selected_media == "All" else country_media[country_media['media_name'] == selected_media]
+
+    if feed_rows.empty:
+        st.warning("No feeds found for the selected country or media.")
+    else:
+        for _, row in feed_rows.iterrows():
+            try:
+                feed = feedparser.parse(row['newsfeed_url'])
+                if feed.entries:
+                    st.subheader(f"📰 {row['media_name']}")
+                    st.caption(f"URL: {row['newsfeed_url']}")
+                    for entry in feed.entries[:5]:
+                        st.markdown(f"- [{entry.title}]({entry.link})")
+            except Exception as e:
+                st.error(f"Error parsing feed: {e}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
