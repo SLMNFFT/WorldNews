@@ -167,4 +167,5 @@ with col3:
 
     # === Global Text-to-Speech Controls ===
     st.markdown("---")
-    st.markdown("### 🔊
+    st.markdown("### 🔊 Global Controls")
+
