@@ -64,16 +64,25 @@ folium.GeoJson(
     tooltip=folium.GeoJsonTooltip(fields=["name"], aliases=["Country:"])
 ).add_to(m)
 
-# === Layout: 3 columns ===
+# === Layout ===
 st.markdown("<h1 style='margin-bottom: 10px;'>🌍 News Feed Map</h1>", unsafe_allow_html=True)
+
+# Map spanning columns 1 and 2 on top
 col1, col2, col3 = st.columns([1, 1, 1.2], gap="medium")
 
-# === Map Column ===
-with col1:
-    st.markdown("### Map")
-    map_data = st_folium(m, width=650, height=450)
+with st.container():
+    # Map across col1 and col2 combined
+    map_col = st.columns([2, 1.2])[0]  # Use first column of a 2-col layout to hold map
 
-    # Country selector below the map
+    with map_col:
+        st.markdown("### Map")
+        map_data = st_folium(m, width=1300, height=450)  # 650 * 2 width roughly
+
+# Below the map, new row with country select and News Statistics side by side under col1 and col2
+col_select, col_stats, col_newsfeed = st.columns([1, 1, 1.2], gap="medium")
+
+with col_select:
+    # Country selector
     available_countries = sorted(news_df['country'].dropna().unique())
     selected_country = st.selectbox(
         "Select a country (or click on the map)",
@@ -82,12 +91,11 @@ with col1:
         if st.session_state.selected_country in available_countries else 0,
         key="selected_country_manual"
     )
-
     if selected_country != st.session_state.selected_country:
         st.session_state.selected_country = selected_country
 
-# === Filters + Stats Column ===
-with col2:
+with col_stats:
+    # News Statistics
     st.markdown("### 📊 News Statistics")
     country_media = news_df[news_df['country'] == st.session_state.selected_country]
 
@@ -125,8 +133,8 @@ with col2:
     for source, count in sorted(source_counts.items(), key=lambda x: -x[1]):
         st.markdown(f"- **{source}**: {count} article(s) today")
 
-# === News Feed Column ===
-with col3:
+with col_newsfeed:
+    # News Feed (unchanged)
     st.markdown("### News Feed")
     st.markdown("<div style='margin-top: -15px'></div>", unsafe_allow_html=True)
 
