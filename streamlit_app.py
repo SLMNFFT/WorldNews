@@ -110,7 +110,7 @@ if map_data and map_data.get("last_clicked"):
         st.session_state.selected_country = selected
 
 # === UI ===
-st.title("🌍 News Feed Explorer by Interactive World Map")
+st.title("🌍 News Feed Map")
 
 # Select box fallback to select country manually
 available_countries = sorted(news_df['country'].dropna().unique())
