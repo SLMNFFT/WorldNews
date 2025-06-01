@@ -8,6 +8,12 @@ from shapely.geometry import shape, Point
 from datetime import datetime, timedelta
 import time
 
+
+st.set_page_config(
+    page_title="NewsMap",
+    layout="wide",
+    page_icon="🎧",
+)
 # === Load and Normalize Data ===
 @st.cache_data
 def load_data():
