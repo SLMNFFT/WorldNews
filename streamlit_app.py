@@ -1,3 +1,5 @@
+# === PRESSEBOT: NewsMap App ===
+
 import streamlit as st
 import pandas as pd
 import feedparser
@@ -12,10 +14,8 @@ from gtts import gTTS
 import os
 import base64
 
-# ==== Page Setup ====
 st.set_page_config(page_title="NewsMap", layout="wide", page_icon="🎧")
 
-# ==== Load Data ====
 @st.cache_data
 def load_data():
     df = pd.read_csv("cleaned_news_feeds.csv")
@@ -43,9 +43,8 @@ def get_country_centroid(country_name):
             geom = shape(feature['geometry'])
             centroid = geom.centroid
             return [centroid.y, centroid.x]
-    return [20, 0]  # fallback
+    return [20, 0]
 
-# ==== Session State ====
 available_countries = sorted(news_df['country'].dropna().unique())
 
 if 'selected_country' not in st.session_state:
@@ -54,12 +53,10 @@ if 'selected_country' not in st.session_state:
 if 'country_select' not in st.session_state:
     st.session_state.country_select = st.session_state.selected_country
 
-# ==== Layout ====
 st.markdown("<h1 style='margin-bottom: 10px;'>🌍 PRESSEBOT - News Cockpit </h1>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns([3, 0.2, 2], gap="medium")
 
 with col1:
-    # === Country Dropdown (syncs with session state) ===
     selected_country_dropdown = st.selectbox(
         "Select a country",
         available_countries,
@@ -69,9 +66,7 @@ with col1:
 
     if selected_country_dropdown != st.session_state.selected_country:
         st.session_state.selected_country = selected_country_dropdown
-        st.session_state.country_select = selected_country_dropdown
 
-    # === Map Display ===
     center_coords = get_country_centroid(st.session_state.selected_country)
     m = folium.Map(location=center_coords, zoom_start=4)
 
@@ -91,7 +86,6 @@ with col1:
 
     map_data = st_folium(m, width=700, height=450)
 
-    # === Map click updates dropdown ===
     if map_data and map_data.get("last_clicked"):
         point = Point(map_data["last_clicked"]['lng'], map_data["last_clicked"]['lat'])
         for feature in geojson['features']:
@@ -99,9 +93,8 @@ with col1:
                 clicked_country = normalize_country(feature['properties']['name'])
                 if clicked_country in available_countries and clicked_country != st.session_state.selected_country:
                     st.session_state.selected_country = clicked_country
-                    st.session_state.country_select = clicked_country  # sync dropdown
+                    # Do not assign to st.session_state.country_select — it’s widget-bound
 
-    # === News Statistics ===
     st.markdown("### 📊 News Statistics")
     media_df = news_df[news_df['country'] == st.session_state.selected_country]
     last_hour = datetime.utcnow() - timedelta(hours=1)
@@ -169,11 +162,9 @@ with col3:
         except Exception as e:
             st.error(f"Error parsing feed: {e}")
 
-    # === 🔊 Global Audio Controls ===
     st.markdown("---")
     st.markdown("### 🔊 Audio Setup")
 
-    # gTTS Supported Languages
     languages = {
         'English (US)': 'en',
         'English (UK)': 'en-uk',
